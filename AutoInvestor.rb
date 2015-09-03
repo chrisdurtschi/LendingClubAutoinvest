@@ -9,7 +9,7 @@ require 'byebug'
 
 #  TODO:
 #  Exclude loans already invested in
-#  Implement PushBullit notifications
+
 
 # LendingClub Configurations #
 $debug = true
@@ -25,21 +25,20 @@ $investmentAmount = 25 		# amount to invest per loan ($25 minimum)
 
 #PushBullet
 $pushbulletApiKey = ''
-$deviceId = '' #iphone 5s
+$deviceId = ''
 
 
-TERMS = Enum.new(:TERMS, :months60 => 60, :months36 => 36)
-PURPOSES = Enum.new(:PURPOSES, :credit_card_refinancing => 'credit_card_refinance', :consolidate => 'debt_consolidation', :other => 'other', :credit_card => 'credit_card', :home_improvement => 'home_improvement', :small_business => 'small_business')
 
 class Account
 
 	def availableCash
-		@availableCash ||= Account.GetAvailableCash
+		availableCash ||= Account.GetAvailableCash
 	end
 
 	def self.GetAvailableCash
 		methodURL = "#{$baseURL}#{$accountURL}/availablecash"
 		if $debug
+			puts "Pulling list of available loans since last release."
 			puts "methodURL: #{__method__} -> #{methodURL}"
 		end
 
@@ -50,7 +49,7 @@ class Account
 		)
 		
 		result = JSON.parse(response)['availableCash']
-		PBC.addLine("Available Cash:  #{result}")
+		PB.addLine("Available Cash:  #{result}")
 		return result
 	end
 end
@@ -58,8 +57,17 @@ end
 
 class Loans
 	
-	def availableLoans
-		@availableLoans ||= Loans.GetAvailableLoans
+	TERMS = Enum.new(:TERMS, :months60 => 60, :months36 => 36)
+	PURPOSES = Enum.new(:PURPOSES, :credit_card_refinancing => 'credit_card_refinance', :consolidate => 'debt_consolidation', :other => 'other', :credit_card => 'credit_card', :home_improvement => 'home_improvement', :small_business => 'small_business')
+
+	def purchasLoans
+		filterLoans(loanList)
+		placeOrder(buildOrderList)
+		PB.sendMessage # send PushBullet message
+	end
+
+	def loanList
+		@loanList ||= Loans.GetAvailableLoans
 	end
 
 	def self.GetAvailableLoans
@@ -76,22 +84,22 @@ class Loans
 		)
 		
 		result = JSON.parse(response)
-		PBC.addLine("Pre-Filtered Loan Count:  #{result.values[1].size}")
+		PB.addLine("Pre-Filtered Loan Count:  #{result.values[1].size}")
 		return result 
-	end	
+	end	 
 
-	def filterLoans 
-		@availableLoans = @availableLoans.values[1].select do |o|
+	def filterLoans(ll)
+		@loanList = ll.values[1].select do |o|
 			o["term"].to_i == TERMS.months36 && 
-			 o["annualInc"].to_i / 12 > 3000 &&
-			 o["empLength"].to_i > 23 &&
-			 o["inqLast6Mths"].to_i == 1 &&
-			 o["pubRec"].to_i == 0 &&
-			 o["intRate"].to_f < 27.0 &&
+			o["annualInc"].to_i / 12 > 3000 &&
+			o["empLength"].to_i > 23 &&
+			o["inqLast6Mths"].to_i == 1 &&
+			o["pubRec"].to_i == 0 &&
+			o["intRate"].to_f < 27.0 &&
 			o["intRate"].to_f > 15.5 &&
 			o["dti"].to_i <= 20 &&
 			o["delinq2Yrs"].to_i < 4 &&
-			( 	# exclude loans where the installment amount is more than 10% of the borrowers monthly income
+			( 	# exclude loans where the installment amount is more than 10% of the borrower's monthly income
 				o["installment"].to_f / (o["annualInc"].to_f / 12) < 0.1 
 			) &&
 			(
@@ -100,23 +108,25 @@ class Loans
 				o["purpose"].to_s == PURPOSES.consolidate
 			)
 		end
-		@availableLoans.sort! { |a,b| b["intRate"].to_f <=> a["intRate"].to_i }
+		
+		@loanList.sort! { |a,b| b["intRate"].to_f <=> a["intRate"].to_i }
 	 	
 	 	if $debug
-	 		pp @availableLoans 
+	 		puts "Filtered Loan List:"
+	 		pp @loanList 	 	
 	 	end
-		
-		PBC.addLine("Post-Filtered Loan Count:  #{@availableLoans.size}")
+
+		PB.addLine("Post-Filtered Loan Count:  #{@loanList.size}")
 	end
 
 	def buildOrderList
-		purchasableLoanCount = [Loans.PurchasableLoanCount, @availableLoans.size].min 
+		purchasableLoanCount = [Loans.PurchasableLoanCount, @loanList.size].min 
 
-		PBC.addLine("Attempting to purchas #{purchasableLoanCount } loans.")
+		PB.addLine("Attempting to purchas #{purchasableLoanCount} loans.")
 
 		if purchasableLoanCount > 0
-			@Orders = Hash["aid" => $account, "orders" => 
-				@availableLoans.first(Loans.PurchasableLoanCount).map do |o|
+			orderList = Hash["aid" => $account, "orders" => 
+				@loanList.first(Loans.PurchasableLoanCount).map do |o|
 					Hash[
 							'loanId' => o["id"].to_i,
 						 	'requestedAmount' => $investmentAmount, 
@@ -125,31 +135,32 @@ class Loans
 				end
 			]
 		end
+		return orderList
 	end
 
 	def self.PurchasableLoanCount
 		A.availableCash.to_i / $investmentAmount 
 	end
 
-	def placeOrder
+	def placeOrder(orderList)
 
-		if @Orders == nil
-			puts "No loans to purchase."
-			return
-		else
+		if orderList != nil
 		 	methodURL = "#{$baseURL}#{$accountURL}/orders"
 		 	if $debug
+		 		puts "Placing purchas order."
 		 		puts "methodURL: #{__method__} -> #{methodURL}"
 		 	end
 
-		 	#response = {}
-		 	response = RestClient.post(methodURL, @Orders.to_json,
+		 	response = RestClient.post(methodURL, orderList.to_json,
 		 		"Authorization" => $authorization,
 		 		"Accept" => $contentType,
 		 		"Content-Type" => $contentType
 		 		)
-
-			PBC.addLine "Successfully Invested: $#{response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }.inject(0) { |sum, o| sum + o["investedAmount"] } }"
+			
+			PB.setSubject "#{response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }.size} of #{Loans.PurchasableLoanCount}"
+			PB.addLine "Successfully Invested: $#{response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }.inject(0) { |sum, o| sum + o["investedAmount"] } }"
+	 	else
+	 		PB.setSubject "0 of #{Loans.PurchasableLoanCount}"
 	 	end
 	end
 end
@@ -158,6 +169,7 @@ end
 class PushBullet
 	def initialize
 		@client ||= PushBullet.initializePushBulletClient
+		addLine(Time.now.strftime("%H:%M %d/%m/%Y"))
 	end
 
 	def self.initializePushBulletClient
@@ -168,27 +180,31 @@ class PushBullet
 		@message = "#{@message}\r\n#{line}"
 	end
 	
+	def setSubject(purchasCount)
+		@subject = "Lending Club AutoInvestor - #{purchasCount} purchases"
+	end
+
 	def sendMessage
-	#	@client.push_note($deviceId, , params: { title: 'Lending Club AutoInvestor Update', body: @message } )
+		if $debug
+	 		puts "PushBullet Message:"
+	 		puts viewMessage
+	 	end
+		@client.push_note(receiver: $deviceId, params: { title: @subject, body: @message } )
+		@client = nil
 	end
 
 	def viewMessage
-		puts @message
+		puts "Subject:  #{@subject}"
+		puts "Message:  #{@message}"
 	end
 end
 
 
 A = Account.new
 L = Loans.new
-PBC = PushBullet.new	
+PB = PushBullet.new	
 
-A.availableCash
-L.availableLoans
-L.filterLoans
-L.buildOrderList
-L.placeOrder
-puts "PCB Message:"
-PBC.viewMessage
-#PBC.sendMessage
+
+L.purchasLoans
 
 
