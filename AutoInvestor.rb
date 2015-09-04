@@ -14,7 +14,7 @@ require 'byebug'
 # LendingClub Configurations #
 $debug = true
 $authorization = ''
-$account = 2628791
+$account = 9999999
 $accountURL = "/accounts/#{$account}"
 $apiVersion = '/v1'
 $baseURL = "https://api.lendingclub.com/api/investor#{$apiVersion}"
@@ -88,8 +88,8 @@ class Loans
 		return result 
 	end	 
 
-	def filterLoans(ll)
-		@loanList = ll.values[1].select do |o|
+	def filterLoans(loanList)
+		@loanList = loanList.values[1].select do |o|
 			o["term"].to_i == TERMS.months36 && 
 			o["annualInc"].to_i / 12 > 3000 &&
 			o["empLength"].to_i > 23 &&
@@ -116,13 +116,13 @@ class Loans
 	 		pp @loanList 	 	
 	 	end
 
-		PB.addLine("Post-Filtered Loan Count:  #{@loanList.size}")
+		#PB.addLine("Post-Filtered Loan Count:  #{@loanList.size}")
 	end
 
 	def buildOrderList
 		purchasableLoanCount = [Loans.PurchasableLoanCount, @loanList.size].min 
 
-		PB.addLine("Attempting to purchas #{purchasableLoanCount} loans.")
+		#PB.addLine("Attempting to purchas #{purchasableLoanCount} loans.")
 
 		if purchasableLoanCount > 0
 			orderList = Hash["aid" => $account, "orders" => 
@@ -161,6 +161,7 @@ class Loans
 			PB.addLine "Successfully Invested: $#{response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }.inject(0) { |sum, o| sum + o["investedAmount"] } }"
 	 	else
 	 		PB.setSubject "0 of #{Loans.PurchasableLoanCount}"
+	 		PB.addLine "0 loans purchased."
 	 	end
 	end
 end
@@ -187,7 +188,7 @@ class PushBullet
 	def sendMessage
 		if $debug
 	 		puts "PushBullet Message:"
-	 		puts viewMessage
+	 		#puts viewMessage
 	 	end
 		@client.push_note(receiver: $deviceId, params: { title: @subject, body: @message } )
 		@client = nil
