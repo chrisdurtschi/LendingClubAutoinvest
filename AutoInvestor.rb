@@ -5,12 +5,13 @@ require 'rest-client'
 require 'json'
 require 'pp'
 require 'washbullet'
-require 'configatron'
-require 'byebug'
+
 require './configatron.rb'
+require 'byebug'
 
 #  TODO:
 #  Exclude loans already invested in
+#  Use bundler
 
 
 $debug = true
@@ -70,6 +71,10 @@ class Loans
 		end
 
 		begin
+			# enable for testing
+			#response = {}
+
+			# disable for testing
 			response = RestClient.get( methodURL, 
 			 		"Authorization" => configatron.lending_club.authorization,
 			 		"Accept" => configatron.lending_club.content_type,
@@ -78,17 +83,24 @@ class Loans
 			result = JSON.parse(response)
 			PB.addLine("Pre-Filtered Loan Count:  #{result.values[1].size}")
 		rescue
-			PB.addline("Failure in: #{__method__}\nUnable to get a list of available loans.")
+			PB.addLine("Failure in: #{__method__}\nUnable to get a list of available loans.")
 		end
 		return result 
 	end	 
 
 	def filterLoans(loanList)
+
+		# 
+		if $debug && loanList == nil
+			@loanList = {}
+			return
+		end			
+			
 		@loanList = loanList.values[1].select do |o|
 			o["term"].to_i == TERMS.months36 && 
-			o["annualInc"].to_i / 12 > 3000 &&
-			o["empLength"].to_i > 23 &&
-			o["inqLast6Mths"].to_i == 1 &&
+			o["annualInc"].to_f / 12 > 3000 &&
+			o["empLength"].to_i > 23 && #
+			o["inqLast6Mths"].to_i <= 1 &&
 			o["pubRec"].to_i == 0 &&
 			o["intRate"].to_f < 27.0 &&
 			o["intRate"].to_f > 15.5 &&
@@ -115,13 +127,13 @@ class Loans
 	end
 
 	def buildOrderList
-		purchasableLoanCount = [Loans.PurchasableLoanCount, @loanList.size].min 
+		@purchasableLoanCount = [Loans.PurchasableLoanCount, @loanList.size].min 
 
-		PB.addLine("Attempting to purchas #{purchasableLoanCount} loans.")
+		PB.addLine("Attempting to purchas #{@purchasableLoanCount} loans.")
 
-		if purchasableLoanCount > 0
-			orderList = Hash["aid" => $account, "orders" => 
-				@loanList.first(Loans.PurchasableLoanCount).map do |o|
+		if @purchasableLoanCount > 0
+			orderList = Hash["aid" => configatron.lending_club.account, "orders" => 
+				@loanList.first(@purchasableLoanCount).map do |o|
 					Hash[
 							'loanId' => o["id"].to_i,
 						 	'requestedAmount' => configatron.lending_club.investment_amount, 
@@ -145,22 +157,22 @@ class Loans
 		 		puts "Placing purchas order."
 		 		puts "methodURL: #{__method__} -> #{methodURL}"
 		 	end
-
-		 	begin
-			 	response = RestClient.post(methodURL, orderList.to_json,
-			 		"Authorization" => configatron.lending_club.authorization,
-			 		"Accept" => configatron.lending_club.content_type,
-			 		"Content-Type" => configatron.lending_club.content_ype
-			 		)
+		 	
+		  	begin
+			  	RestClient.post(methodURL, orderList.to_json,
+			  	 	"Authorization" => configatron.lending_club.authorization,
+			  	 	"Accept" => configatron.lending_club.content_type,
+			  	 	"Content-Type" => configatron.lending_club.content_type
+			  	 	)
 				
-				PB.setSubject "#{response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }.size} of #{Loans.PurchasableLoanCount}"
-				PB.addLine "Successfully Invested: $#{response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }.inject(0) { |sum, o| sum + o["investedAmount"] } }"
+				 PB.setSubject("#{response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }.size} of #{@purchasableLoanCount}")
+				 PB.addLine("Successfully Invested: $#{response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }.inject(0) { |sum, o| sum + o["investedAmount"] } }")
 			rescue
-				PB.addline("Failure in: #{__method__}\nUnable to place order.")
+				PB.addLine("Failure in: #{__method__}\nUnable to place order.")
 			end
 		else
-	 		PB.setSubject "0 of #{Loans.PurchasableLoanCount}"
-	 		PB.addLine "0 loans purchased."
+	 		PB.setSubject("0 of #{@purchasableLoanCount}")
+	 		PB.addLine("0 loans purchased.")
 	 	end
 	end
 end
@@ -181,7 +193,7 @@ class PushBullet
 	end
 	
 	def setSubject(purchasCount)
-		@subject = "Lending Club AutoInvestor - #{purchasCount} purchases"
+		@subject = "Lending Club AutoInvestor - #{purchasCount} purchased"
 	end
 
 	def sendMessage
@@ -191,7 +203,7 @@ class PushBullet
 	 	end
 
 	 	begin 
-			@client.push_note(receiver: configatron.bush_bullet.device_id, params: { title: @subject, body: @message } )
+			@client.push_note(receiver: configatron.push_bullet.device_id, params: { title: @subject, body: @message } )
 		rescue
 			puts "Failure in: #{__method__}\nUnable to send the following PushBullet note:\n"
 			puts viewMessage
