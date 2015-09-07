@@ -5,27 +5,26 @@ require 'rest-client'
 require 'json'
 require 'pp'
 require 'washbullet'
-
 require './configatron.rb'
 require 'byebug'
 
 #  TODO:
-#  Exclude loans already invested in
 #  Use bundler
 
 
-$debug = true
+$debug = false 
+$verbose = true
 
 
 class Account
 
 	def availableCash
-		@availableCash ||= Account.GetAvailableCash
+		@availableCash ||= Account.getAvailableCash
 	end
 
-	def self.GetAvailableCash
+	def self.getAvailableCash
 		methodURL = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/accounts/#{configatron.lending_club.account}/availablecash"
-		if $debug
+		if $verbose
 			puts "Pulling list of available loans since last release."
 			puts "methodURL: #{__method__} -> #{methodURL}"
 		end
@@ -33,7 +32,7 @@ class Account
 		begin 
 			response = RestClient.get(methodURL,
 			 		"Authorization" => configatron.lending_club.authorization,
-			 		"Accept" => configatron.lending_club.content_type,
+			 		"Accept" => configatron.lending_club.content_type,		
 			 		"Content-Type" => configatron.lending_club.content_type
 				)
 
@@ -60,42 +59,37 @@ class Loans
 	end
 
 	def loanList
-		@loanList ||= Loans.GetAvailableLoans
+		@loanList ||= Loans.getAvailableLoans
 	end
 
-	def self.GetAvailableLoans
+	def self.getAvailableLoans
 		methodURL = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/loans/listing"
 		if $debug
-			puts "Pulling fresh Loans data."
-			puts "methodURL: #{__method__} -> #{methodURL}"
+			puts "Pulling loans from file: './AvailableLoans.rb'"
+		
+			response = File.read('./AvailableLoans.rb')
+			return JSON.parse(response)
+		else
+			begin
+				puts "Pulling fresh Loans data."
+			 	puts "methodURL: #{__method__} -> #{methodURL}"
+				response = RestClient.get( methodURL, 
+				 		"Authorization" => configatron.lending_club.authorization,
+				 		"Accept" => configatron.lending_club.content_type,
+				 		"Content-Type" => configatron.lending_club.content_type
+					)
+				result = JSON.parse(response)
+				PB.addLine("Pre-Filtered Loan Count:  #{result.values[1].size}")
+			rescue
+				PB.addLine("Failure in: #{__method__}\nUnable to get a list of available loans.")
+			end
 		end
-
-		begin
-			# enable for testing
-			#response = {}
-
-			# disable for testing
-			response = RestClient.get( methodURL, 
-			 		"Authorization" => configatron.lending_club.authorization,
-			 		"Accept" => configatron.lending_club.content_type,
-			 		"Content-Type" => configatron.lending_club.content_type
-				)
-			result = JSON.parse(response)
-			PB.addLine("Pre-Filtered Loan Count:  #{result.values[1].size}")
-		rescue
-			PB.addLine("Failure in: #{__method__}\nUnable to get a list of available loans.")
-		end
+		
 		return result 
 	end	 
 
 	def filterLoans(loanList)
 
-		# 
-		if $debug && loanList == nil
-			@loanList = {}
-			return
-		end			
-			
 		@loanList = loanList.values[1].select do |o|
 			o["term"].to_i == TERMS.months36 && 
 			o["annualInc"].to_f / 12 > 3000 &&
@@ -118,14 +112,40 @@ class Loans
 		
 		@loanList.sort! { |a,b| b["intRate"].to_f <=> a["intRate"].to_i }
 	 	
-	 	if $debug
-	 		puts "Filtered Loan List:"
-	 		pp @loanList 	 	
-	 	end
-
-		PB.addLine("Post-Filtered Loan Count:  #{@loanList.size}")
+	 	removeOwnedLoans(ownedLoans)
 	end
 
+	def removeOwnedLoans(ownedLoans)
+		# extract loanId's from a hash of already owned loans and remove those loans from the list of filtered loans whenever
+		a = []
+		ownedLoans.values[0].map {|o| a << o["loanId"]}
+		a.each { |i| @loanList.delete_if {|key, value| key["id"] == i} }
+	end
+	
+	def ownedLoans
+		methodURL = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/accounts/#{configatron.lending_club.account}/notes"
+		if $verbose
+			puts "Pulling list of already owned loans."
+			puts "methodURL: #{__method__} -> #{methodURL}"
+		end
+
+		begin 
+			response = RestClient.get(methodURL,
+			 		"Authorization" => configatron.lending_club.authorization,
+			 		"Accept" => configatron.lending_club.content_type,
+			 		"Content-Type" => configatron.lending_club.content_type
+				)
+
+			result = JSON.parse(response)
+
+		rescue
+			PB.addline("Failure in: #{__method__}\nUnable to get the list of already owned loans.")
+			
+		end
+
+		return result
+	end
+	
 	def buildOrderList
 		@purchasableLoanCount = [Loans.PurchasableLoanCount, @loanList.size].min 
 
@@ -150,25 +170,28 @@ class Loans
 	end
 
 	def placeOrder(orderList)
-
 		if orderList != nil
 		 	methodURL = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/accounts/#{configatron.lending_club.account}/orders"
-		 	if $debug
+
+		 	if $verbose
 		 		puts "Placing purchas order."
 		 		puts "methodURL: #{__method__} -> #{methodURL}"
 		 	end
-		 	
-		  	begin
-			  	RestClient.post(methodURL, orderList.to_json,
-			  	 	"Authorization" => configatron.lending_club.authorization,
-			  	 	"Accept" => configatron.lending_club.content_type,
-			  	 	"Content-Type" => configatron.lending_club.content_type
-			  	 	)
-				
-				 PB.setSubject("#{response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }.size} of #{@purchasableLoanCount}")
-				 PB.addLine("Successfully Invested: $#{response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }.inject(0) { |sum, o| sum + o["investedAmount"] } }")
-			rescue
-				PB.addLine("Failure in: #{__method__}\nUnable to place order.")
+		 	if $debug
+		 		puts "Debug mode - This order will not be placed."
+			else
+			  	begin
+				  	response = RestClient.post(methodURL, orderList.to_json,
+				  	 	"Authorization" => configatron.lending_club.authorization,
+				  	 	"Accept" => configatron.lending_club.content_type,
+				  	 	"Content-Type" => configatron.lending_club.content_type
+				  	 	)
+
+					PB.setSubject("#{response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }.size} of #{@purchasableLoanCount}")
+					PB.addLine("Successfully Invested: $#{response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }.inject(0) { |sum, o| sum + o["investedAmount"] } }")
+				rescue
+					PB.addLine("Failure in: #{__method__}\nUnable to place order.")
+				end
 			end
 		else
 	 		PB.setSubject("0 of #{@purchasableLoanCount}")
@@ -179,6 +202,7 @@ end
 
 
 class PushBullet
+
 	def initialize
 		@client ||= PushBullet.initializePushBulletClient
 		addLine(Time.now.strftime("%H:%M %d/%m/%Y"))
@@ -194,10 +218,13 @@ class PushBullet
 	
 	def setSubject(purchasCount)
 		@subject = "Lending Club AutoInvestor - #{purchasCount} purchased"
+		if $debug
+			@subject = "* DEBUG * " + @subject
+		end
 	end
 
 	def sendMessage
-		if $debug
+		if $verbose
 	 		puts "PushBullet Message:"
 	 		puts viewMessage
 	 	end
@@ -213,8 +240,8 @@ class PushBullet
 	end
 
 	def viewMessage
-		puts "Subject:  #{@subject}"
-		puts "Message:  #{@message}"
+		puts "PushBullet Subject:  #{@subject}"
+		puts "PushBulletMessage:  #{@message}"
 	end
 end
 
