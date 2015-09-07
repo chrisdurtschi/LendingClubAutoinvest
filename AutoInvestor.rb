@@ -10,9 +10,10 @@ require 'byebug'
 
 #  TODO:
 #  Use bundler
+#  Create tests
 
 
-$debug = false 
+$debug = true 
 $verbose = true
 
 
@@ -90,7 +91,6 @@ class Loans
 	end	 
 
 	def filterLoans(loanList)
-
 		@loanList = loanList.values[1].select do |o|
 			o["term"].to_i == TERMS.months36 && 
 			o["annualInc"].to_f / 12 > 3000 &&
@@ -140,8 +140,7 @@ class Loans
 			result = JSON.parse(response)
 
 		rescue
-			PB.addline("Failure in: #{__method__}\nUnable to get the list of already owned loans.")
-			
+			PB.addLine("Failure in: #{__method__}\nUnable to get the list of already owned loans.")
 		end
 
 		return result
