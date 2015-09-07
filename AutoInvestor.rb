@@ -5,7 +5,7 @@ require 'rest-client'
 require 'json'
 require 'pp'
 require 'washbullet'
-require './configatron.rb'
+require_relative 'configatron.rb'
 require 'byebug'
 
 #  TODO:
@@ -65,12 +65,13 @@ class Loans
 	def self.getAvailableLoans
 		methodURL = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/loans/listing"
 		if $debug
-			puts "Pulling loans from file: './AvailableLoans.rb'"
+			puts "Pulling loans from file: './Test/AvailableLoans.rb'"
 		
-			response = File.read('./AvailableLoans.rb')
+			response = File.read('./Test/AvailableLoans.rb')
 			return JSON.parse(response)
 		else
 			begin
+				sleep(5)  #sleep 5 seconds to allow loans to become viewable
 				puts "Pulling fresh Loans data."
 			 	puts "methodURL: #{__method__} -> #{methodURL}"
 				response = RestClient.get( methodURL, 
@@ -147,7 +148,7 @@ class Loans
 	end
 	
 	def buildOrderList
-		@purchasableLoanCount = [Loans.PurchasableLoanCount, @loanList.size].min 
+		@purchasableLoanCount = [Loans.purchasableLoanCount, @loanList.size].min 
 
 		PB.addLine("Attempting to purchas #{@purchasableLoanCount} loans.")
 
@@ -165,7 +166,7 @@ class Loans
 		return orderList
 	end
 
-	def self.PurchasableLoanCount
+	def self.purchasableLoanCount
 		A.availableCash.to_i / configatron.lending_club.investment_amount 
 	end
 
@@ -241,7 +242,7 @@ class PushBullet
 
 	def viewMessage
 		puts "PushBullet Subject:  #{@subject}"
-		puts "PushBulletMessage:  #{@message}"
+		puts "Message:  #{@message}"
 	end
 end
 
