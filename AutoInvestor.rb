@@ -1,15 +1,18 @@
 #!/usr/bin/ruby
 
+require_relative 'configatron.rb'
+require 'rubygems'
+require 'bundler/setup'
 require 'yinum'
 require 'rest-client'
 require 'json'
 require 'pp'
 require 'washbullet'
-require_relative 'configatron.rb'
 require 'byebug'
 
+
 #  TODO:
-#  Use bundler
+
 #  Create tests
 
 
@@ -49,7 +52,6 @@ end
 
 
 class Loans
-	
 	TERMS = Enum.new(:TERMS, :months60 => 60, :months36 => 36)
 	PURPOSES = Enum.new(:PURPOSES, :credit_card_refinancing => 'credit_card_refinance', :consolidate => 'debt_consolidation', :other => 'other', :credit_card => 'credit_card', :home_improvement => 'home_improvement', :small_business => 'small_business')
 
