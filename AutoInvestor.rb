@@ -15,39 +15,8 @@ require 'byebug'
 #  Create tests
 
 
-$debug = true 
+$debug = false 
 $verbose = true
-
-
-class Account
-
-	def availableCash
-		@availableCash ||= Account.getAvailableCash
-	end
-
-	def self.getAvailableCash
-		methodURL = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/accounts/#{configatron.lending_club.account}/availablecash"
-		if $verbose
-			puts "Pulling list of available loans since last release."
-			puts "methodURL: #{__method__} -> #{methodURL}"
-		end
-
-		begin 
-			response = RestClient.get(methodURL,
-			 		"Authorization" => configatron.lending_club.authorization,
-			 		"Accept" => configatron.lending_club.content_type,		
-			 		"Content-Type" => configatron.lending_club.content_type
-				)
-
-			result = JSON.parse(response)['availableCash']
-			PB.addLine("Available Cash:  #{result}")
-		rescue
-			PB.addline("Failure in: #{__method__}\nUnable to get current account balance.")
-		end
-		
-		return result
-	end
-end
 
 
 class Loans
@@ -171,36 +140,82 @@ class Loans
 	end
 
 	def placeOrder(orderList)
-		if orderList != nil
-		 	methodURL = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/accounts/#{configatron.lending_club.account}/orders"
-
-		 	if $verbose
-		 		puts "Placing purchas order."
-		 		puts "methodURL: #{__method__} -> #{methodURL}"
-		 	end
-		 	if $debug
-		 		puts "Debug mode - This order will not be placed."
-			else
+	 	methodURL = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/accounts/#{configatron.lending_club.account}/orders"
+	 	puts "orderList:  #{orderList.class}"
+	 	if $verbose
+	 		puts "Placing purchas order."
+	 		puts "methodURL: #{__method__} -> #{methodURL}"
+	 	end
+	 	if $debug
+	 		puts "Debug mode - This order will not be placed."
+	 		puts "Pulling loans from file: './Test/PurchasResponse.rb'"
+		
+			response = JSON.parse(File.read('./Test/PurchasResponse.rb'))
+		else
+			unless orderList.nil?
 			  	begin
 				  	response = RestClient.post(methodURL, orderList.to_json,
 				  	 	"Authorization" => configatron.lending_club.authorization,
 				  	 	"Accept" => configatron.lending_club.content_type,
 				  	 	"Content-Type" => configatron.lending_club.content_type
 				  	 	)
-
-					PB.setSubject("#{response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }.size} of #{@purchasableLoanCount}")
-					PB.addLine("Successfully Invested: $#{response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }.inject(0) { |sum, o| sum + o["investedAmount"] } }")
 				rescue
-					PB.addLine("Failure in: #{__method__}\nUnable to place order.")
+					if $verbose
+						puts "Response:  #{response}"
+						puts "orderList: #{orderList}"
+					end
+					PB.addLine("Failure in: #{__method__}\nUnable to place order with #{methodURL}")
+				ensure
+					reportOrderResponse(nil) # order failed; enusure reporting
 				end
 			end
-		else
-	 		PB.setSubject("0 of #{@purchasableLoanCount}")
-	 		PB.addLine("0 loans purchased.")
-	 	end
+		end
+		reportOrderResponse(response)
 	end
+
+	def reportOrderResponse(response)
+		unless response.nil?
+			invested = response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }
+
+			PB.setSubject("#{invested.size.to_i} of #{[Loans.purchasableLoanCount.to_i, @loanList.size].max}")
+			PB.addLine("Successfully Invested:  #{invested.inject(0) { |sum, o| sum + o["investedAmount"] } }") # dollar amount invested
+		else
+			PB.setSubject "0 of #{[Loans.purchasableLoanCount.to_i, @loanList.size].max}"
+		end
+	end
+
 end
 
+
+class Account
+
+	def availableCash
+		@availableCash ||= Account.getAvailableCash
+	end
+
+	def self.getAvailableCash
+		methodURL = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/accounts/#{configatron.lending_club.account}/availablecash"
+		if $verbose
+			puts "Pulling list of available loans since last release."
+			puts "methodURL: #{__method__} -> #{methodURL}"
+		end
+
+		begin 
+			response = RestClient.get(methodURL,
+			 		"Authorization" => configatron.lending_club.authorization,
+			 		"Accept" => configatron.lending_club.content_type,		
+			 		"Content-Type" => configatron.lending_club.content_type
+				)
+
+			result = JSON.parse(response)['availableCash']
+			PB.addLine("Available Cash:  #{result}")
+		rescue
+			PB.addline("Failure in: #{__method__}\nUnable to get current account balance.")
+		end
+		
+		return result
+	end
+end
 
 class PushBullet
 
@@ -231,7 +246,7 @@ class PushBullet
 	 	end
 
 	 	begin 
-			@client.push_note(receiver: configatron.push_bullet.device_id, params: { title: @subject, body: @message } )
+			#@client.push_note(receiver: configatron.push_bullet.device_id, params: { title: @subject, body: @message } )
 		rescue
 			puts "Failure in: #{__method__}\nUnable to send the following PushBullet note:\n"
 			puts viewMessage
