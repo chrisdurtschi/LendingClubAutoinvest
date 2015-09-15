@@ -5,7 +5,7 @@ configatron.configure_from_hash(
 	{
 		authorization: '',
 		account: 11111111,
-		portfolio_id: 222222222,
+		portfolio_id: 22222222,  	
 		investment_amount: 25, 		# amount to invest per loan ($25 minimum)
 
 		api_version: 'v1',
@@ -20,5 +20,11 @@ configatron.configure_from_hash(
 	logging:
 	{
 		order_response_log: '~/Library/Logs/LC-OrderResponse.log'
+	},
+	testing_files:
+	{
+		purchase_response: 'Test/PurchaseResponse.rb',
+		available_loans: 'Test/AvailableLoans.rb',
+		owned_loans:  'Test/OwnedLoans.rb'
 	}
 )

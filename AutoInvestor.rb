@@ -41,9 +41,8 @@ class Loans
 	def self.getAvailableLoans
 		methodURL = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/loans/listing"
 		if $debug
-			puts "Pulling loans from file: './Test/AvailableLoans.rb'"
-		
-			response = File.read('./Test/AvailableLoans.rb')
+			puts "Pulling loans from file: '#{configatron.testing_files.available_loans}'"
+			response = File.read(File.expand_path("../" + configatron.testing_files.available_loans, __FILE__))
 			return JSON.parse(response)
 		else
 			begin
@@ -124,7 +123,7 @@ class Loans
 	def buildOrderList
 		@purchasableLoanCount = [Loans.purchasableLoanCount, @loanList.size].min 
 
-		PB.addLine("Attempting to purchas #{@purchasableLoanCount} loans.")
+		PB.addLine("Attempting to purchase #{@purchasableLoanCount} loans.")
 
 		if @purchasableLoanCount > 0
 			orderList = Hash["aid" => configatron.lending_club.account, "orders" => 
@@ -147,14 +146,14 @@ class Loans
 	def placeOrder(orderList)
 	 	methodURL = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/accounts/#{configatron.lending_club.account}/orders"
 	 	if $verbose
-	 		puts "Placing purchas order."
+	 		puts "Placing purchase order."
 	 		puts "methodURL: #{__method__} -> #{methodURL}"
 	 	end
 	 	if $debug
 	 		puts "Debug mode - This order will not be placed."
-	 		puts "Pulling loans from file: './Test/PurchasResponse.rb'"
+	 		puts "Pulling loans from file: '#{configatron.testing_files.purchase_response}'"
 		
-			response = JSON.parse(File.read('./Test/PurchasResponse.rb'))
+			response = JSON.parse(File.read(File.expand_path("../" + configatron.testing_files.purchase_response, __FILE__)))
 		else
 			unless orderList.nil?
 			  	begin
