@@ -7,15 +7,20 @@ require 'yinum'
 require 'rest-client'
 require 'json'
 require 'pp'
-require 'washbullet'
+require 'washbullet' #PushBullet
 require 'byebug'
 
 
 #  TODO:
 #  Create tests
+#  Identify and handle purchases when loans are released late
+#  Improve and manage logging
 
+#  	Notes:
+# 	It's intended for this script to be scheduled to run each time LendingClub releases new loans. 
+# 	Currently LendingClub releases new loans at 7 AM, 11 AM, 3 PM and 7 PM (MST) each day.  
 
-$debug = false 
+$debug = true 
 $verbose = true
 
 
@@ -42,7 +47,7 @@ class Loans
 			return JSON.parse(response)
 		else
 			begin
-				sleep(5)  #sleep 5 seconds to allow loans to become viewable
+				#sleep(5)  #sleep 5 seconds to allow loans to become viewable
 				puts "Pulling fresh Loans data."
 			 	puts "methodURL: #{__method__} -> #{methodURL}"
 				response = RestClient.get( methodURL, 
@@ -141,7 +146,6 @@ class Loans
 
 	def placeOrder(orderList)
 	 	methodURL = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/accounts/#{configatron.lending_club.account}/orders"
-	 	puts "orderList:  #{orderList.class}"
 	 	if $verbose
 	 		puts "Placing purchas order."
 	 		puts "methodURL: #{__method__} -> #{methodURL}"
@@ -161,10 +165,10 @@ class Loans
 				  	 	)
 				rescue
 					if $verbose
-						puts "Response:  #{response}"
+						puts "Order Response:  #{response}"
 						puts "orderList: #{orderList}"
 					end
-					PB.addLine("Failure in: #{__method__}\nUnable to place order with #{methodURL}")
+					PB.addLine("Failure in: #{__method__}\nUnable to place order with methodURL:\n#{methodURL}")
 				ensure
 					reportOrderResponse(nil) # order failed; enusure reporting
 				end
@@ -175,10 +179,18 @@ class Loans
 
 	def reportOrderResponse(response)
 		unless response.nil?
-			invested = response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }
+				File.open(File.expand_path(configatron.logging.order_response_log), 'a') { |file| file.write("#{Time.now.strftime("%H:%M %d/%m/%Y")}\n#{response}\n\n") }
+			begin
+				invested = response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }
 
-			PB.setSubject("#{invested.size.to_i} of #{[Loans.purchasableLoanCount.to_i, @loanList.size].max}")
-			PB.addLine("Successfully Invested:  #{invested.inject(0) { |sum, o| sum + o["investedAmount"] } }") # dollar amount invested
+				PB.setSubject("#{invested.size.to_i} of #{[Loans.purchasableLoanCount.to_i, @loanList.size].max}")
+				PB.addLine("Successfully Invested:  #{invested.inject(0) { |sum, o| sum + o["investedAmount"] } }") # dollar amount invested
+			rescue
+				if $verbose
+					puts "Order Response:  #{response}"
+				end
+				PB.addLine("Failure in: #{__method__}\nUnable to report on order response.\nSee ~/Library/Logs/LC-PurchaseResponse.log for order response.")
+			end
 		else
 			PB.setSubject "0 of #{[Loans.purchasableLoanCount.to_i, @loanList.size].max}"
 		end
@@ -246,7 +258,7 @@ class PushBullet
 	 	end
 
 	 	begin 
-			#@client.push_note(receiver: configatron.push_bullet.device_id, params: { title: @subject, body: @message } )
+			@client.push_note(receiver: configatron.push_bullet.device_id, params: { title: @subject, body: @message } )
 		rescue
 			puts "Failure in: #{__method__}\nUnable to send the following PushBullet note:\n"
 			puts viewMessage
