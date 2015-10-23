@@ -12,15 +12,22 @@ require 'byebug'
 
 
 #  TODO:
-#  Create tests
-#  Identify and handle purchases when loans are released late
+#  Implement Unit Tests
+#  Identify and handle purchases when loans are released late 
+# 		removes need to call purchase loans multiple times
 #  Improve and manage logging
+# 		possibly compress and/or delete log files based on age/size 
+#  Improve order response messaging
+#	 	report on number of sucessful purchases, number no longer in funding, etc
+# 		i.e. all response codes
 
+###############################
 #  	Notes:
 # 	It's intended for this script to be scheduled to run each time LendingClub releases new loans. 
 # 	Currently LendingClub releases new loans at 7 AM, 11 AM, 3 PM and 7 PM (MST) each day.  
+###############################
 
-$debug = true 
+$debug = false 
 $verbose = true
 
 
@@ -30,6 +37,7 @@ class Loans
 
 	def purchasLoans
 		filterLoans(loanList)
+		removeOwnedLoans(ownedLoans)
 		placeOrder(buildOrderList)
 		PB.sendMessage # send PushBullet message
 	end
@@ -39,14 +47,14 @@ class Loans
 	end
 
 	def self.getAvailableLoans
-		methodURL = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/loans/listing"
+		methodURL = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/loans/listing" #only show loans released in the most recent release (add "?showAll=true" to see all loans)
 		if $debug
 			puts "Pulling loans from file: '#{configatron.testing_files.available_loans}'"
 			response = File.read(File.expand_path("../" + configatron.testing_files.available_loans, __FILE__))
 			return JSON.parse(response)
 		else
 			begin
-				#sleep(5)  #sleep 5 seconds to allow loans to become viewable
+	
 				puts "Pulling fresh Loans data."
 			 	puts "methodURL: #{__method__} -> #{methodURL}"
 				response = RestClient.get( methodURL, 
@@ -73,9 +81,9 @@ class Loans
 			o["pubRec"].to_i == 0 &&
 			o["intRate"].to_f < 27.0 &&
 			o["intRate"].to_f > 15.5 &&
-			o["dti"].to_i <= 20 &&
+			o["dti"].to_f <= 20.00 &&
 			o["delinq2Yrs"].to_i < 4 &&
-			( 	# exclude loans where the installment amount is more than 10% of the borrower's monthly income
+			( 	# exclude loans where the instalment amount is more than 10% of the borrower's monthly income
 				o["installment"].to_f / (o["annualInc"].to_f / 12) < 0.1 
 			) &&
 			(
@@ -84,14 +92,12 @@ class Loans
 				o["purpose"].to_s == PURPOSES.consolidate
 			)
 		end
-		
+		# sort the loans with the highest interst rate to the front so they will be purchased first if there aren't enough funds to purchase all loans.
 		@loanList.sort! { |a,b| b["intRate"].to_f <=> a["intRate"].to_i }
-	 	
-	 	removeOwnedLoans(ownedLoans)
 	end
 
 	def removeOwnedLoans(ownedLoans)
-		# extract loanId's from a hash of already owned loans and remove those loans from the list of filtered loans whenever
+		# extract loanId's from a hash of already owned loans and remove those loans from the list of filtered loans
 		a = []
 		ownedLoans.values[0].map {|o| a << o["loanId"]}
 		a.each { |i| @loanList.delete_if {|key, value| key["id"] == i} }
@@ -136,7 +142,11 @@ class Loans
 				end
 			]
 		end
-		return orderList
+		begin
+			File.open(File.expand_path(configatron.logging.order_list_log), 'a') { |file| file.write("#{Time.now.strftime("%H:%M %d/%m/%Y")}\n#{orderList}\n\n") }
+		ensure
+			return orderList
+		end
 	end
 
 	def self.purchasableLoanCount
@@ -168,8 +178,8 @@ class Loans
 						puts "orderList: #{orderList}"
 					end
 					PB.addLine("Failure in: #{__method__}\nUnable to place order with methodURL:\n#{methodURL}")
-				ensure
 					reportOrderResponse(nil) # order failed; enusure reporting
+					return
 				end
 			end
 		end
@@ -181,9 +191,13 @@ class Loans
 				File.open(File.expand_path(configatron.logging.order_response_log), 'a') { |file| file.write("#{Time.now.strftime("%H:%M %d/%m/%Y")}\n#{response}\n\n") }
 			begin
 				invested = response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }
-
-				PB.setSubject("#{invested.size.to_i} of #{[Loans.purchasableLoanCount.to_i, @loanList.size].max}")
-				PB.addLine("Successfully Invested:  #{invested.inject(0) { |sum, o| sum + o["investedAmount"] } }") # dollar amount invested
+				if invested.nil?
+					PB.setSubject = "0 of #{respponse.size.to_i} were successfull ordered."
+					PB.addLine("Loan was probably no longer in funding.")
+				else
+					PB.setSubject("#{invested.size.to_i} of #{[Loans.purchasableLoanCount.to_i, @loanList.size].max}")
+					PB.addLine("Successfully Invested:  #{invested.inject(0) { |sum, o| sum + o["investedAmount"].to_f } }") # dollar amount invested
+				end
 			rescue
 				if $verbose
 					puts "Order Response:  #{response}"
@@ -228,11 +242,16 @@ class Account
 	end
 end
 
+
 class PushBullet
 
 	def initialize
-		@client ||= PushBullet.initializePushBulletClient
-		addLine(Time.now.strftime("%H:%M %d/%m/%Y"))
+		pbClient
+	end
+
+	def pbClient
+		@pbClient ||= PushBullet.initializePushBulletClient
+		addLine(Time.now.strftime("%H:%M %m/%d/%Y"))
 	end
 
 	def self.initializePushBulletClient
@@ -257,12 +276,15 @@ class PushBullet
 	 	end
 
 	 	begin 
-			@client.push_note(receiver: configatron.push_bullet.device_id, params: { title: @subject, body: @message } )
+			@pbClient.push_note(receiver: configatron.push_bullet.device_id, params: { title: @subject, body: @message } )
 		rescue
 			puts "Failure in: #{__method__}\nUnable to send the following PushBullet note:\n"
 			puts viewMessage
 		ensure
-			@client = nil
+			#@pbClient = nil
+			# setting @message and @subject to nil as setting @pbClient does not appear to cause PushBullet.initializePushBulletClient to be called
+			@message = nil
+			@subject = nil
 		end
 	end
 
@@ -275,10 +297,25 @@ end
 
 PB = PushBullet.new
 A = Account.new
-L = Loans.new
+
+sleep(2)
+Loans.new.purchasLoans
+
+sleep(5)
+Loans.new.purchasLoans
+
+sleep(10)
+Loans.new.purchasLoans
+
+sleep(25)
+Loans.new.purchasLoans
+
+sleep(30)
+Loans.new.purchasLoans
 
 
-L.purchasLoans
+
+
 
 
 
