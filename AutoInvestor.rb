@@ -39,7 +39,8 @@ class Loans
 		filterLoans(loanList)
 		removeOwnedLoans(ownedLoans)
 		placeOrder(buildOrderList)
-		PB.sendMessage # send PushBullet message
+		#PB.sendMessage # send PushBullet message
+		PB.viewMessage
 	end
 
 	def loanList
@@ -80,7 +81,7 @@ class Loans
 			o["inqLast6Mths"].to_i <= 1 &&
 			o["pubRec"].to_i == 0 &&
 			o["intRate"].to_f < 27.0 &&
-			o["intRate"].to_f > 15.5 &&
+			o["intRate"].to_f > 16.0 &&
 			o["dti"].to_f <= 20.00 &&
 			o["delinq2Yrs"].to_i < 4 &&
 			( 	# exclude loans where the instalment amount is more than 10% of the borrower's monthly income
@@ -92,7 +93,7 @@ class Loans
 				o["purpose"].to_s == PURPOSES.consolidate
 			)
 		end
-		# sort the loans with the highest interst rate to the front so they will be purchased first if there aren't enough funds to purchase all loans.
+		# sort the loans with the highest interst rate to the front  --this is so they will be purchased first when there aren't enough funds to purchase all loans
 		@loanList.sort! { |a,b| b["intRate"].to_f <=> a["intRate"].to_i }
 	end
 
@@ -127,9 +128,9 @@ class Loans
 	end
 	
 	def buildOrderList
-		@purchasableLoanCount = [Loans.purchasableLoanCount, @loanList.size].min 
+		@purchasableLoanCount = [Loans.fundableLoanCount, @loanList.size].min 
 
-		PB.addLine("Attempting to purchase #{@purchasableLoanCount} loans.")
+		PB.addLine("Plancing an order for #{@purchasableLoanCount} loans.")
 
 		if @purchasableLoanCount > 0
 			orderList = Hash["aid" => configatron.lending_club.account, "orders" => 
@@ -149,7 +150,7 @@ class Loans
 		end
 	end
 
-	def self.purchasableLoanCount
+	def self.fundableLoanCount
 		A.availableCash.to_i / configatron.lending_club.investment_amount 
 	end
 
@@ -160,7 +161,7 @@ class Loans
 	 		puts "methodURL: #{__method__} -> #{methodURL}"
 	 	end
 	 	if $debug
-	 		puts "Debug mode - This order will not be placed."
+	 		puts "Debug mode - This order will NOT be placed."
 	 		puts "Pulling loans from file: '#{configatron.testing_files.purchase_response}'"
 		
 			response = JSON.parse(File.read(File.expand_path("../" + configatron.testing_files.purchase_response, __FILE__)))
@@ -187,16 +188,16 @@ class Loans
 	end
 
 	def reportOrderResponse(response)
+
 		unless response.nil?
 				File.open(File.expand_path(configatron.logging.order_response_log), 'a') { |file| file.write("#{Time.now.strftime("%H:%M %d/%m/%Y")}\n#{response}\n\n") }
 			begin
 				invested = response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }
-				if invested.nil?
-					PB.setSubject = "0 of #{respponse.size.to_i} were successfull ordered."
-					PB.addLine("Loan was probably no longer in funding.")
-				else
-					PB.setSubject("#{invested.size.to_i} of #{[Loans.purchasableLoanCount.to_i, @loanList.size].max}")
-					PB.addLine("Successfully Invested:  #{invested.inject(0) { |sum, o| sum + o["investedAmount"].to_f } }") # dollar amount invested
+				notInFunding = response.values[1].select { |o| o["executionStatus"].include? 'NOT_AN_IN_FUNDING_LOAN' }
+				PB.setSubject("#{invested.size.to_i} of #{@purchasableLoanCount}/#{[Loans.fundableLoanCount.to_i, @loanList.size].max}")
+				PB.addLine("Successfully Invested:  #{invested.inject(0) { |sum, o| sum + o["investedAmount"].to_f }}") # dollar amount invested
+				if notInFunding.any?
+					PB.addLine("No longer in funding:  #{notInFunding.size}") # NOT_AN_IN_FUNDING_LOAN
 				end
 			rescue
 				if $verbose
@@ -205,7 +206,7 @@ class Loans
 				PB.addLine("Failure in: #{__method__}\nUnable to report on order response.\nSee ~/Library/Logs/LC-PurchaseResponse.log for order response.")
 			end
 		else
-			PB.setSubject "0 of #{[Loans.purchasableLoanCount.to_i, @loanList.size].max}"
+			PB.setSubject "0 of #{[Loans.fundableLoanCount.to_i, @loanList.size].max}"
 		end
 	end
 
@@ -282,7 +283,7 @@ class PushBullet
 			puts viewMessage
 		ensure
 			#@pbClient = nil
-			# setting @message and @subject to nil as setting @pbClient does not appear to cause PushBullet.initializePushBulletClient to be called
+			# setting @message and @subject to nil as setting @pbClient to nil does not appear to cause PushBullet.initializePushBulletClient to be called when next launched
 			@message = nil
 			@subject = nil
 		end
@@ -298,21 +299,23 @@ end
 PB = PushBullet.new
 A = Account.new
 
+
+Loans.new.purchasLoans
+
 sleep(2)
 Loans.new.purchasLoans
 
-sleep(5)
-Loans.new.purchasLoans
+# sleep(5)
+# Loans.new.purchasLoans
 
-sleep(10)
-Loans.new.purchasLoans
+# sleep(10)
+# Loans.new.purchasLoans
 
-sleep(25)
-Loans.new.purchasLoans
+# sleep(30)
+# Loans.new.purchasLoans
 
-sleep(30)
-Loans.new.purchasLoans
-
+# sleep(45)
+# Loans.new.purchasLoans
 
 
 

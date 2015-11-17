@@ -1,0 +1,1 @@
+{"orderInstructId":null,"orderConfirmations":[{"loanId":63359087,"requestedAmount":25.0,"investedAmount":0.0,"executionStatus":["NOT_AN_IN_FUNDING_LOAN"]},{"loanId":65462443,"requestedAmount":25.0,"investedAmount":0.0,"executionStatus":["NOT_AN_IN_FUNDING_LOAN"]},{"loanId":65302679,"requestedAmount":25.0,"investedAmount":0.0,"executionStatus":["NOT_AN_IN_FUNDING_LOAN"]}]}
