@@ -1,1 +1,1 @@
-web: bundle exec ruby Autoinvestor.rb
+web: bundle exec ruby AutoInvestor.rb
