@@ -2,6 +2,7 @@ GEM
   remote: https://rubygems.org/
   specs:
     byebug (6.0.2)
+    configatron (4.5.0)
     domain_name (0.5.24)
       unf (>= 0.0.5, < 1.0.0)
     faraday (0.9.1)
@@ -31,6 +32,7 @@ PLATFORMS
 
 DEPENDENCIES
   byebug
+  configatron
   json
   rest-client
   washbullet
