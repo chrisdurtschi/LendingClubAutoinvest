@@ -1,1 +1,1 @@
-web: bundle exec ruby AutoInvestor.rb
+worker:		bundle exec clockworkd start --log -c /home/pi/projects/LendingClubAutoinvest/clock.rb
