@@ -20,6 +20,11 @@ require 'byebug'
 #  Improve order response messaging
 #	 	report on number of sucessful purchases, number no longer in funding, etc
 # 		i.e. all response codes
+#  Launch this app using clockwork gem https://github.com/tomykaira/clockwork
+#  		more control over scheduling vs chon
+#  Create a (Sys V) init.d or a Upstart (init) to sart clockwork
+# 		ensures clockwork is running
+#  Consider pulling loan value prior to release then sleeping until release
 
 ###############################
 #  	Notes:
@@ -27,7 +32,7 @@ require 'byebug'
 # 	Currently LendingClub releases new loans at 7 AM, 11 AM, 3 PM and 7 PM (MST) each day.  
 ###############################
 
-$debug = false 
+$debug = true 
 $verbose = true
 
 
@@ -39,8 +44,8 @@ class Loans
 		filterLoans(loanList)
 		removeOwnedLoans(ownedLoans)
 		placeOrder(buildOrderList)
-		#PB.sendMessage # send PushBullet message
-		PB.viewMessage
+		PB.sendMessage # send PushBullet message
+		#PB.viewMessage
 	end
 
 	def loanList
@@ -74,34 +79,38 @@ class Loans
 	end	 
 
 	def filterLoans(loanList)
-		@loanList = loanList.values[1].select do |o|
-			o["term"].to_i == TERMS.months36 && 
-			o["annualInc"].to_f / 12 > 3000 &&
-			o["empLength"].to_i > 23 && #
-			o["inqLast6Mths"].to_i <= 1 &&
-			o["pubRec"].to_i == 0 &&
-			o["intRate"].to_f < 27.0 &&
-			o["intRate"].to_f > 16.0 &&
-			o["dti"].to_f <= 20.00 &&
-			o["delinq2Yrs"].to_i < 4 &&
-			( 	# exclude loans where the instalment amount is more than 10% of the borrower's monthly income
-				o["installment"].to_f / (o["annualInc"].to_f / 12) < 0.1 
-			) &&
-			(
-				o["purpose"].to_s == PURPOSES.credit_card || 
-				o["purpose"].to_s == PURPOSES.credit_card_refinancing ||
-				o["purpose"].to_s == PURPOSES.consolidate
-			)
+		unless loanList.nil?
+			@loanList = loanList.values[1].select do |o|
+				o["term"].to_i == TERMS.months36 && 
+				o["annualInc"].to_f / 12 > 3000 &&
+				o["empLength"].to_i > 23 && #
+				o["inqLast6Mths"].to_i <= 1 &&
+				o["pubRec"].to_i == 0 &&
+				o["intRate"].to_f < 27.0 &&
+				o["intRate"].to_f > 16.0 &&
+				o["dti"].to_f <= 20.00 &&
+				o["delinq2Yrs"].to_i < 4 &&
+				( 	# exclude loans where the instalment amount is more than 10% of the borrower's monthly income
+					o["installment"].to_f / (o["annualInc"].to_f / 12) < 0.1 
+				) &&
+				(
+					o["purpose"].to_s == PURPOSES.credit_card || 
+					o["purpose"].to_s == PURPOSES.credit_card_refinancing ||
+					o["purpose"].to_s == PURPOSES.consolidate
+				)
+			end
+			# sort the loans with the highest interst rate to the front  --this is so they will be purchased first when there aren't enough funds to purchase all loans
+			@loanList.sort! { |a,b| b["intRate"].to_f <=> a["intRate"].to_i }
 		end
-		# sort the loans with the highest interst rate to the front  --this is so they will be purchased first when there aren't enough funds to purchase all loans
-		@loanList.sort! { |a,b| b["intRate"].to_f <=> a["intRate"].to_i }
 	end
 
 	def removeOwnedLoans(ownedLoans)
-		# extract loanId's from a hash of already owned loans and remove those loans from the list of filtered loans
-		a = []
-		ownedLoans.values[0].map {|o| a << o["loanId"]}
-		a.each { |i| @loanList.delete_if {|key, value| key["id"] == i} }
+		unless @loanList.nil?
+			# extract loanId's from a hash of already owned loans and remove those loans from the list of filtered loans
+			a = []
+			ownedLoans.values[0].map {|o| a << o["loanId"]}
+			a.each { |i| @loanList.delete_if {|key, value| key["id"] == i} }
+		end
 	end
 	
 	def ownedLoans
@@ -164,7 +173,7 @@ class Loans
 	 		puts "Debug mode - This order will NOT be placed."
 	 		puts "Pulling loans from file: '#{configatron.testing_files.purchase_response}'"
 		
-			response = JSON.parse(File.read(File.expand_path("../" + configatron.testing_files.purchase_response, __FILE__)))
+			response = File.read(File.expand_path("../" + configatron.testing_files.purchase_response, __FILE__))
 		else
 			unless orderList.nil?
 			  	begin
@@ -190,8 +199,10 @@ class Loans
 	def reportOrderResponse(response)
 
 		unless response.nil?
+				response = JSON.parse(response)
 				File.open(File.expand_path(configatron.logging.order_response_log), 'a') { |file| file.write("#{Time.now.strftime("%H:%M %d/%m/%Y")}\n#{response}\n\n") }
 			begin
+				puts "Response: #{response}"
 				invested = response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }
 				notInFunding = response.values[1].select { |o| o["executionStatus"].include? 'NOT_AN_IN_FUNDING_LOAN' }
 				PB.setSubject("#{invested.size.to_i} of #{@purchasableLoanCount}/#{[Loans.fundableLoanCount.to_i, @loanList.size].max}")
@@ -206,7 +217,7 @@ class Loans
 				PB.addLine("Failure in: #{__method__}\nUnable to report on order response.\nSee ~/Library/Logs/LC-PurchaseResponse.log for order response.")
 			end
 		else
-			PB.setSubject "0 of #{[Loans.fundableLoanCount.to_i, @loanList.size].max}"
+			PB.setSubject "0 of #{@purchasableLoanCount}/#{[Loans.fundableLoanCount.to_i, @loanList.size].max}"
 		end
 	end
 
@@ -305,17 +316,17 @@ Loans.new.purchasLoans
 sleep(2)
 Loans.new.purchasLoans
 
-# sleep(5)
-# Loans.new.purchasLoans
+sleep(5)
+Loans.new.purchasLoans
 
-# sleep(10)
-# Loans.new.purchasLoans
+sleep(10)
+Loans.new.purchasLoans
 
-# sleep(30)
-# Loans.new.purchasLoans
+sleep(30)
+Loans.new.purchasLoans
 
-# sleep(45)
-# Loans.new.purchasLoans
+sleep(45)
+Loans.new.purchasLoans
 
 
 
