@@ -32,7 +32,7 @@ require 'byebug'
 # 	Currently LendingClub releases new loans at 7 AM, 11 AM, 3 PM and 7 PM (MST) each day.  
 ###############################
 
-$debug = true 
+$debug = false 
 $verbose = true
 
 
@@ -40,7 +40,7 @@ class Loans
 	TERMS = Enum.new(:TERMS, :months60 => 60, :months36 => 36)
 	PURPOSES = Enum.new(:PURPOSES, :credit_card_refinancing => 'credit_card_refinance', :consolidate => 'debt_consolidation', :other => 'other', :credit_card => 'credit_card', :home_improvement => 'home_improvement', :small_business => 'small_business')
 
-	def purchasLoans
+	def purchaseLoans
 		filterLoans(loanList)
 		removeOwnedLoans(ownedLoans)
 		placeOrder(buildOrderList)
@@ -306,27 +306,6 @@ class PushBullet
 	end
 end
 
-
-PB = PushBullet.new
-A = Account.new
-
-
-Loans.new.purchasLoans
-
-sleep(2)
-Loans.new.purchasLoans
-
-sleep(5)
-Loans.new.purchasLoans
-
-sleep(10)
-Loans.new.purchasLoans
-
-sleep(30)
-Loans.new.purchasLoans
-
-sleep(45)
-Loans.new.purchasLoans
 
 
 
