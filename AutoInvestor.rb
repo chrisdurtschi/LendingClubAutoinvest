@@ -12,24 +12,23 @@ require 'byebug'
 
 
 #  TODO:
+#  Add Setup Instructions
+#  		Add instructons for using clock.rb with /etc/init.d/clockworker.sh
+#  		Add instruction for using clockworkd and clockwork
 #  Implement Unit Tests
 #  Identify and handle purchases when loans are released late 
 # 		removes need to call purchase loans multiple times
 #  Improve and manage logging
 # 		possibly compress and/or delete log files based on age/size 
 #  Improve order response messaging
-#	 	report on number of sucessful purchases, number no longer in funding, etc
-# 		i.e. all response codes
-#  Launch this app using clockwork gem https://github.com/tomykaira/clockwork
-#  		more control over scheduling vs chon
-#  Create a (Sys V) init.d or a Upstart (init) to sart clockwork
-# 		ensures clockwork is running
+# 		I.e. handle all response codes
 #  Consider pulling loan value prior to release then sleeping until release
 
 ###############################
 #  	Notes:
 # 	It's intended for this script to be scheduled to run each time LendingClub releases new loans. 
-# 	Currently LendingClub releases new loans at 7 AM, 11 AM, 3 PM and 7 PM (MST) each day.  
+# 	Currently LendingClub releases new loans at 7 AM, 11 AM, 3 PM and 7 PM (MST) each day.
+#   This is idealy handled by the clock.rb/clockworkd/colckworker.sh setup  
 ###############################
 
 $debug = false 
