@@ -15,7 +15,7 @@ require 'byebug'
 #  Add Setup Instructions
 #  		Add instructons for using clock.rb with /etc/init.d/clockworker.sh
 #  		Add instruction for using clockworkd and clockwork
-# 		(recomend useing foreman/upstart)
+# 		(recomend using foreman/upstart)
 #  Implement Unit Tests
 #  Identify and handle purchases when loans are released late 
 # 		removes need to call purchase loans multiple times
