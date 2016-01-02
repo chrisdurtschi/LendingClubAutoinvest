@@ -24,6 +24,23 @@ require 'byebug'
 #  Consider pulling loan value prior to release then sleeping until release
 
 ###############################
+#  Install Instructions:
+#  	Rotate logs using logrotate
+#		brew install logrotate (OS X only)
+#		mkdir /var/log/lending_club_autoinvestor/
+#		add below to "/etc/logrotate.d/lending_club_autoinvestor" file:
+#			/var/log/lending_club_autoinvestor/*.log {
+#		        daily
+#		        missingok
+#		        rotate 7
+#		        compress
+#		        notifempty
+#				nocreate
+#			}
+#		modify configuration as needed (man logrotate)
+###############################
+
+###############################
 #  	Notes:
 # 	It's intended for this script to be scheduled to run each time LendingClub releases new loans. 
 # 	Currently LendingClub releases new loans at 7 AM, 11 AM, 3 PM and 7 PM (MST) each day.
