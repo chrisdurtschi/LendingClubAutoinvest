@@ -12,27 +12,25 @@ require 'byebug'
 
 
 #  TODO:
+#  Add Setup Instructions
+#  		Add instructons for using clock.rb with /etc/init.d/clockworker.sh
+#  		Add instruction for using clockworkd and clockwork
+# 		(recomend using foreman/upstart)
 #  Implement Unit Tests
 #  Identify and handle purchases when loans are released late 
 # 		removes need to call purchase loans multiple times
-#  Improve and manage logging
-# 		possibly compress and/or delete log files based on age/size 
 #  Improve order response messaging
-#	 	report on number of sucessful purchases, number no longer in funding, etc
-# 		i.e. all response codes
-#  Launch this app using clockwork gem https://github.com/tomykaira/clockwork
-#  		more control over scheduling vs chon
-#  Create a (Sys V) init.d or a Upstart (init) to sart clockwork
-# 		ensures clockwork is running
+# 		I.e. handle all response codes
 #  Consider pulling loan value prior to release then sleeping until release
 
 ###############################
 #  	Notes:
 # 	It's intended for this script to be scheduled to run each time LendingClub releases new loans. 
-# 	Currently LendingClub releases new loans at 7 AM, 11 AM, 3 PM and 7 PM (MST) each day.  
+# 	Currently LendingClub releases new loans at 7 AM, 11 AM, 3 PM and 7 PM (MST) each day.
+#   This is idealy handled by the clock.rb/clockworkd/colckworker.sh setup  
 ###############################
 
-$debug = true 
+$debug = false 
 $verbose = true
 
 
@@ -40,7 +38,7 @@ class Loans
 	TERMS = Enum.new(:TERMS, :months60 => 60, :months36 => 36)
 	PURPOSES = Enum.new(:PURPOSES, :credit_card_refinancing => 'credit_card_refinance', :consolidate => 'debt_consolidation', :other => 'other', :credit_card => 'credit_card', :home_improvement => 'home_improvement', :small_business => 'small_business')
 
-	def purchasLoans
+	def purchaseLoans
 		filterLoans(loanList)
 		removeOwnedLoans(ownedLoans)
 		placeOrder(buildOrderList)
@@ -153,7 +151,7 @@ class Loans
 			]
 		end
 		begin
-			File.open(File.expand_path(configatron.logging.order_list_log), 'a') { |file| file.write("#{Time.now.strftime("%H:%M %d/%m/%Y")}\n#{orderList}\n\n") }
+			File.open(File.expand_path(configatron.logging.order_list_log), 'a') { |file| file.write("#{Time.now.strftime("%H:%M:%S %d/%m/%Y")}\n#{orderList}\n\n") }
 		ensure
 			return orderList
 		end
@@ -200,7 +198,11 @@ class Loans
 
 		unless response.nil?
 				response = JSON.parse(response)
+<<<<<<< HEAD
 				File.open(File.expand_path(configatron.logging.order_response_log), 'a') { |file| file.write("#{Time.now.strftime("%H:%M %d/%m/%Y")}\n#{response}\n\n") }
+=======
+				File.open(File.expand_path(configatron.logging.order_response_log), 'a') { |file| file.write("#{Time.now.strftime("%H:%M:%S %d/%m/%Y")}\n#{response}\n\n") }
+>>>>>>> 093b51b8b22baf28192cb0228d47b6320eb34109
 			begin
 				puts "Response: #{response}"
 				invested = response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }
@@ -263,7 +265,7 @@ class PushBullet
 
 	def pbClient
 		@pbClient ||= PushBullet.initializePushBulletClient
-		addLine(Time.now.strftime("%H:%M %m/%d/%Y"))
+		addLine(Time.now.strftime("%H:%M:%S %m/%d/%Y"))
 	end
 
 	def self.initializePushBulletClient
@@ -307,6 +309,7 @@ class PushBullet
 end
 
 
+<<<<<<< HEAD
 PB = PushBullet.new
 A = Account.new
 
@@ -330,6 +333,8 @@ Loans.new.purchasLoans
 
 
 
+=======
+>>>>>>> 093b51b8b22baf28192cb0228d47b6320eb34109
 
 
 
