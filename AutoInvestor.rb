@@ -215,11 +215,7 @@ class Loans
 
 		unless response.nil?
 				response = JSON.parse(response)
-<<<<<<< HEAD
-				File.open(File.expand_path(configatron.logging.order_response_log), 'a') { |file| file.write("#{Time.now.strftime("%H:%M %d/%m/%Y")}\n#{response}\n\n") }
-=======
 				File.open(File.expand_path(configatron.logging.order_response_log), 'a') { |file| file.write("#{Time.now.strftime("%H:%M:%S %d/%m/%Y")}\n#{response}\n\n") }
->>>>>>> 093b51b8b22baf28192cb0228d47b6320eb34109
 			begin
 				puts "Response: #{response}"
 				invested = response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }
@@ -324,35 +320,3 @@ class PushBullet
 		puts "Message:  #{@message}"
 	end
 end
-
-
-<<<<<<< HEAD
-PB = PushBullet.new
-A = Account.new
-
-
-Loans.new.purchasLoans
-
-sleep(2)
-Loans.new.purchasLoans
-
-sleep(5)
-Loans.new.purchasLoans
-
-sleep(10)
-Loans.new.purchasLoans
-
-sleep(30)
-Loans.new.purchasLoans
-
-sleep(45)
-Loans.new.purchasLoans
-
-
-
-=======
->>>>>>> 093b51b8b22baf28192cb0228d47b6320eb34109
-
-
-
-
