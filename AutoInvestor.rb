@@ -30,7 +30,7 @@ require 'byebug'
 #		mkdir /var/log/lending_club_autoinvestor/
 #		add below to "/etc/logrotate.d/lending_club_autoinvestor" file:
 #			/var/log/lending_club_autoinvestor/*.log {
-#		        daily
+#		        weekly
 #		        missingok
 #		        rotate 7
 #		        compress
@@ -47,7 +47,7 @@ require 'byebug'
 #   This is idealy handled by the clock.rb/clockworkd/colckworker.sh setup  
 ###############################
 
-$debug = false 
+$debug = true 
 $verbose = true
 
 
@@ -55,20 +55,20 @@ class Loans
 	TERMS = Enum.new(:TERMS, :months60 => 60, :months36 => 36)
 	PURPOSES = Enum.new(:PURPOSES, :credit_card_refinancing => 'credit_card_refinance', :consolidate => 'debt_consolidation', :other => 'other', :credit_card => 'credit_card', :home_improvement => 'home_improvement', :small_business => 'small_business')
 
-	def purchaseLoans
-		filterLoans(loanList)
-		removeOwnedLoans(ownedLoans)
-		placeOrder(buildOrderList)
-		PB.sendMessage # send PushBullet message
-		#PB.viewMessage
+	def purchase_loans
+		filter_loans(loan_list)
+		remove_owned_loans(owned_loans)
+		place_order(build_order_list)
+		PB.send_message # send PushBullet message
+		#PB.view_message
 	end
 
-	def loanList
-		@loanList ||= Loans.getAvailableLoans
+	def loan_list
+		@loan_list ||= Loans.get_available_loans
 	end
 
-	def self.getAvailableLoans
-		methodURL = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/loans/listing" #only show loans released in the most recent release (add "?showAll=true" to see all loans)
+	def self.get_available_loans
+		method_url = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/loans/listing" #only show loans released in the most recent release (add "?showAll=true" to see all loans)
 		if $debug
 			puts "Pulling loans from file: '#{configatron.testing_files.available_loans}'"
 			response = File.read(File.expand_path("../" + configatron.testing_files.available_loans, __FILE__))
@@ -77,25 +77,25 @@ class Loans
 			begin
 	
 				puts "Pulling fresh Loans data."
-			 	puts "methodURL: #{__method__} -> #{methodURL}"
-				response = RestClient.get( methodURL, 
+			 	puts "method_url: #{__method__} -> #{method_url}"
+				response = RestClient.get( method_url, 
 				 		"Authorization" => configatron.lending_club.authorization,
 				 		"Accept" => configatron.lending_club.content_type,
 				 		"Content-Type" => configatron.lending_club.content_type
 					)
 				result = JSON.parse(response)
-				PB.addLine("Pre-Filtered Loan Count:  #{result.values[1].size}")
+				PB.add_line("Pre-Filtered Loan Count:  #{result.values[1].size}")
 			rescue
-				PB.addLine("Failure in: #{__method__}\nUnable to get a list of available loans.")
+				PB.add_line("Failure in: #{__method__}\nUnable to get a list of available loans.")
 			end
 		end
 		
 		return result 
 	end	 
 
-	def filterLoans(loanList)
-		unless loanList.nil?
-			@loanList = loanList.values[1].select do |o|
+	def filter_loans(loan_list)
+		unless loan_list.nil?
+			@loan_list = loan_list.values[1].select do |o|
 				o["term"].to_i == TERMS.months36 && 
 				o["annualInc"].to_f / 12 > 3000 &&
 				o["empLength"].to_i > 23 && #
@@ -115,28 +115,28 @@ class Loans
 				)
 			end
 			# sort the loans with the highest interst rate to the front  --this is so they will be purchased first when there aren't enough funds to purchase all loans
-			@loanList.sort! { |a,b| b["intRate"].to_f <=> a["intRate"].to_i }
+			@loan_list.sort! { |a,b| b["intRate"].to_f <=> a["intRate"].to_i }
 		end
 	end
 
-	def removeOwnedLoans(ownedLoans)
-		unless @loanList.nil?
+	def remove_owned_loans(owned_loans)
+		unless @loan_list.nil?
 			# extract loanId's from a hash of already owned loans and remove those loans from the list of filtered loans
 			a = []
-			ownedLoans.values[0].map {|o| a << o["loanId"]}
-			a.each { |i| @loanList.delete_if {|key, value| key["id"] == i} }
+			owned_loans.values[0].map {|o| a << o["loanId"]}
+			a.each { |i| @loan_list.delete_if {|key, value| key["id"] == i} }
 		end
 	end
 	
-	def ownedLoans
-		methodURL = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/accounts/#{configatron.lending_club.account}/notes"
+	def owned_loans
+		method_url = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/accounts/#{configatron.lending_club.account}/notes"
 		if $verbose
 			puts "Pulling list of already owned loans."
-			puts "methodURL: #{__method__} -> #{methodURL}"
+			puts "method_url: #{__method__} -> #{method_url}"
 		end
 
 		begin 
-			response = RestClient.get(methodURL,
+			response = RestClient.get(method_url,
 			 		"Authorization" => configatron.lending_club.authorization,
 			 		"Accept" => configatron.lending_club.content_type,
 			 		"Content-Type" => configatron.lending_club.content_type
@@ -145,20 +145,20 @@ class Loans
 			result = JSON.parse(response)
 
 		rescue
-			PB.addLine("Failure in: #{__method__}\nUnable to get the list of already owned loans.")
+			PB.add_line("Failure in: #{__method__}\nUnable to get the list of already owned loans.")
 		end
 
 		return result
 	end
 	
-	def buildOrderList
-		@purchasableLoanCount = [Loans.fundableLoanCount, @loanList.size].min 
+	def build_order_list
+		@purchasable_loan_count = [Loans.fundable_loan_count, @loan_list.size].min 
 
-		PB.addLine("Plancing an order for #{@purchasableLoanCount} loans.")
+		PB.add_line("Plancing an order for #{@purchasable_loan_count} loans.")
 
-		if @purchasableLoanCount > 0
-			orderList = Hash["aid" => configatron.lending_club.account, "orders" => 
-				@loanList.first(@purchasableLoanCount).map do |o|
+		if @purchasable_loan_count > 0
+			order_list = Hash["aid" => configatron.lending_club.account, "orders" => 
+				@loan_list.first(@purchasable_loan_count).map do |o|
 					Hash[
 							'loanId' => o["id"].to_i,
 						 	'requestedAmount' => configatron.lending_club.investment_amount, 
@@ -168,21 +168,21 @@ class Loans
 			]
 		end
 		begin
-			File.open(File.expand_path(configatron.logging.order_list_log), 'a') { |file| file.write("#{Time.now.strftime("%H:%M:%S %d/%m/%Y")}\n#{orderList}\n\n") }
+			File.open(File.expand_path(configatron.logging.order_list_log), 'a') { |file| file.write("#{Time.now.strftime("%H:%M:%S %d/%m/%Y")}\n#{order_list}\n\n") }
 		ensure
-			return orderList
+			return order_list
 		end
 	end
 
-	def self.fundableLoanCount
-		A.availableCash.to_i / configatron.lending_club.investment_amount 
+	def self.fundable_loan_count
+		A.available_cash.to_i / configatron.lending_club.investment_amount 
 	end
 
-	def placeOrder(orderList)
-	 	methodURL = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/accounts/#{configatron.lending_club.account}/orders"
+	def place_order(order_list)
+	 	method_url = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/accounts/#{configatron.lending_club.account}/orders"
 	 	if $verbose
 	 		puts "Placing purchase order."
-	 		puts "methodURL: #{__method__} -> #{methodURL}"
+	 		puts "method_url: #{__method__} -> #{method_url}"
 	 	end
 	 	if $debug
 	 		puts "Debug mode - This order will NOT be placed."
@@ -190,9 +190,9 @@ class Loans
 		
 			response = File.read(File.expand_path("../" + configatron.testing_files.purchase_response, __FILE__))
 		else
-			unless orderList.nil?
+			unless order_list.nil?
 			  	begin
-				  	response = RestClient.post(methodURL, orderList.to_json,
+				  	response = RestClient.post(method_url, order_list.to_json,
 				  	 	"Authorization" => configatron.lending_club.authorization,
 				  	 	"Accept" => configatron.lending_club.content_type,
 				  	 	"Content-Type" => configatron.lending_club.content_type
@@ -200,18 +200,18 @@ class Loans
 				rescue
 					if $verbose
 						puts "Order Response:  #{response}"
-						puts "orderList: #{orderList}"
+						puts "order_list: #{order_list}"
 					end
-					PB.addLine("Failure in: #{__method__}\nUnable to place order with methodURL:\n#{methodURL}")
-					reportOrderResponse(nil) # order failed; enusure reporting
+					PB.add_line("Failure in: #{__method__}\nUnable to place order with method_url:\n#{method_url}")
+					report_order_response(nil) # order failed; enusure reporting
 					return
 				end
 			end
 		end
-		reportOrderResponse(response)
+		report_order_response(response)
 	end
 
-	def reportOrderResponse(response)
+	def report_order_response(response)
 
 		unless response.nil?
 				response = JSON.parse(response)
@@ -219,20 +219,20 @@ class Loans
 			begin
 				puts "Response: #{response}"
 				invested = response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }
-				notInFunding = response.values[1].select { |o| o["executionStatus"].include? 'NOT_AN_IN_FUNDING_LOAN' }
-				PB.setSubject("#{invested.size.to_i} of #{@purchasableLoanCount}/#{[Loans.fundableLoanCount.to_i, @loanList.size].max}")
-				PB.addLine("Successfully Invested:  #{invested.inject(0) { |sum, o| sum + o["investedAmount"].to_f }}") # dollar amount invested
-				if notInFunding.any?
-					PB.addLine("No longer in funding:  #{notInFunding.size}") # NOT_AN_IN_FUNDING_LOAN
+				not_in_funding = response.values[1].select { |o| o["executionStatus"].include? 'NOT_AN_IN_FUNDING_LOAN' }
+				PB.set_subject("#{invested.size.to_i} of #{@purchasable_loan_count}/#{[Loans.fundable_loan_count.to_i, @loan_list.size].max}")
+				PB.add_line("Successfully Invested:  #{invested.inject(0) { |sum, o| sum + o["invested_amount"].to_f }}") # dollar amount invested
+				if not_in_funding.any?
+					PB.add_line("No longer in funding:  #{not_in_funding.size}") # NOT_AN_IN_FUNDING_LOAN
 				end
 			rescue
 				if $verbose
 					puts "Order Response:  #{response}"
 				end
-				PB.addLine("Failure in: #{__method__}\nUnable to report on order response.\nSee ~/Library/Logs/LC-PurchaseResponse.log for order response.")
+				PB.add_line("Failure in: #{__method__}\nUnable to report on order response.\nSee ~/Library/Logs/LC-PurchaseResponse.log for order response.")
 			end
 		else
-			PB.setSubject "0 of #{@purchasableLoanCount}/#{[Loans.fundableLoanCount.to_i, @loanList.size].max}"
+			PB.set_subject "0 of #{@purchasable_loan_count}/#{[Loans.fundable_loan_count.to_i, @loan_list.size].max}"
 		end
 	end
 
@@ -241,28 +241,28 @@ end
 
 class Account
 
-	def availableCash
-		@availableCash ||= Account.getAvailableCash
+	def available_cash
+		@available_cash ||= Account.get_available_cash
 	end
 
-	def self.getAvailableCash
-		methodURL = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/accounts/#{configatron.lending_club.account}/availablecash"
+	def self.get_available_cash
+		method_url = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/accounts/#{configatron.lending_club.account}/availablecash"
 		if $verbose
 			puts "Pulling list of available loans since last release."
-			puts "methodURL: #{__method__} -> #{methodURL}"
+			puts "method_url: #{__method__} -> #{method_url}"
 		end
 
 		begin 
-			response = RestClient.get(methodURL,
+			response = RestClient.get(method_url,
 			 		"Authorization" => configatron.lending_club.authorization,
 			 		"Accept" => configatron.lending_club.content_type,		
 			 		"Content-Type" => configatron.lending_club.content_type
 				)
 
-			result = JSON.parse(response)['availableCash']
-			PB.addLine("Available Cash:  #{result}")
+			result = JSON.parse(response)['available_cash']
+			PB.add_line("Available Cash:  #{result}")
 		rescue
-			PB.addline("Failure in: #{__method__}\nUnable to get current account balance.")
+			PB.add_line("Failure in: #{__method__}\nUnable to get current account balance.")
 		end
 		
 		return result
@@ -273,50 +273,54 @@ end
 class PushBullet
 
 	def initialize
-		pbClient
+		pb_client
 	end
 
-	def pbClient
-		@pbClient ||= PushBullet.initializePushBulletClient
-		addLine(Time.now.strftime("%H:%M:%S %m/%d/%Y"))
+	def pb_client
+		@pb_client ||= PushBullet.initialize_push_bullet_client
+		add_line(Time.now.strftime("%H:%M:%S %m/%d/%Y"))
 	end
 
-	def self.initializePushBulletClient
+	def self.initialize_push_bullet_client
 		Washbullet::Client.new(configatron.push_bullet.api_key)
 	end
 
-	def addLine(line)
+	def add_line(line)
 		@message = "#{@message}\n#{line}"
 	end
 	
-	def setSubject(purchasCount)
-		@subject = "Lending Club AutoInvestor - #{purchasCount} purchased"
+	def set_subject(purchas_count)
+		@subject = "Lending Club AutoInvestor - #{purchas_count} purchased"
 		if $debug
 			@subject = "* DEBUG * " + @subject
 		end
 	end
 
-	def sendMessage
+	def send_message
 		if $verbose
 	 		puts "PushBullet Message:"
-	 		puts viewMessage
+	 		puts view_message
 	 	end
 
 	 	begin 
-			@pbClient.push_note(receiver: configatron.push_bullet.device_id, params: { title: @subject, body: @message } )
+			@pb_client.push_note(receiver: configatron.push_bullet.device_id, params: { title: @subject, body: @message } )
 		rescue
 			puts "Failure in: #{__method__}\nUnable to send the following PushBullet note:\n"
-			puts viewMessage
+			puts view_message
 		ensure
-			#@pbClient = nil
-			# setting @message and @subject to nil as setting @pbClient to nil does not appear to cause PushBullet.initializePushBulletClient to be called when next launched
+			#@pb_client = nil
+			# setting @message and @subject to nil as setting @pb_client to nil does not appear to cause PushBullet.initialize_push_bullet_client to be called when next launched
 			@message = nil
 			@subject = nil
 		end
 	end
 
-	def viewMessage
+	def view_message
 		puts "PushBullet Subject:  #{@subject}"
 		puts "Message:  #{@message}"
 	end
 end
+
+PB = PushBullet.new
+A = Account.new
+Loans.new.purchase_loans
