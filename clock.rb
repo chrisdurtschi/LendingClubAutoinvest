@@ -18,10 +18,10 @@ Clockwork.every(1.days, 'AutoInvestor.rb', :at => ['14:00', '18:00', '22:00', '0
 	PB = PushBullet.new
 	A = Account.new
 
-	Loans.new.purchaseLoans
+	Loans.new.purchase_loans
 	sleep(3)
-	Loans.new.purchaseLoans
+	Loans.new.purchase_loans
 	sleep(5)
-	Loans.new.purchaseLoans
+	Loans.new.purchase_loans
 
 }
