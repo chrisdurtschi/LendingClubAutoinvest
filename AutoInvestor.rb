@@ -221,7 +221,7 @@ class Loans
 				invested = response.values[1].select { |o| o["executionStatus"].include? 'ORDER_FULFILLED' }
 				not_in_funding = response.values[1].select { |o| o["executionStatus"].include? 'NOT_AN_IN_FUNDING_LOAN' }
 				PB.set_subject("#{invested.size.to_i} of #{@purchasable_loan_count}/#{[Loans.fundable_loan_count.to_i, @loan_list.size].max}")
-				PB.add_line("Successfully Invested:  #{invested.inject(0) { |sum, o| sum + o["invested_amount"].to_f }}") # dollar amount invested
+				PB.add_line("Successfully Invested:  #{invested.inject(0) { |sum, o| sum + o["investedAmount"].to_f }}") # dollar amount invested
 				if not_in_funding.any?
 					PB.add_line("No longer in funding:  #{not_in_funding.size}") # NOT_AN_IN_FUNDING_LOAN
 				end
