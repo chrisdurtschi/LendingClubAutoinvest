@@ -18,10 +18,10 @@ require 'byebug'
 # 		(recomend using foreman/upstart)
 #  Implement Unit Tests
 #  Identify and handle purchases when loans are released late 
-# 		removes need to call purchase loans multiple times
+# 		Removes need to call purchase loans multiple times
 #  Improve order response messaging
-# 		I.e. handle all response codes
-#  Consider pulling loan value prior to release then sleeping until release
+# 		Currently only
+
 
 ###############################
 #  Install Instructions:
@@ -47,7 +47,7 @@ require 'byebug'
 #   This is idealy handled by the clock.rb/clockworkd/colckworker.sh setup  
 ###############################
 
-$debug = false 
+$debug = true 
 $verbose = true
 
 
@@ -266,6 +266,7 @@ class Account
 		
 		return result
 	end
+
 end
 
 
@@ -288,8 +289,8 @@ class PushBullet
 		@message = "#{@message}\n#{line}"
 	end
 	
-	def set_subject(purchas_count)
-		@subject = "Lending Club AutoInvestor - #{purchas_count} purchased"
+	def set_subject(purchase_count)
+		@subject = "Lending Club AutoInvestor - #{purchase_count} purchased"
 		if $debug
 			@subject = "* DEBUG * " + @subject
 		end
@@ -318,8 +319,5 @@ class PushBullet
 		puts "PushBullet Subject:  #{@subject}"
 		puts "Message:  #{@message}"
 	end
-end
 
-PB = PushBullet.new
-A = Account.new
-Loans.new.purchase_loans
+end
