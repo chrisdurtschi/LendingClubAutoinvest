@@ -47,7 +47,7 @@ require 'byebug'
 #   This is idealy handled by the clock.rb/clockworkd/colckworker.sh setup  
 ###############################
 
-$debug = true 
+$debug = false 
 $verbose = true
 
 
@@ -248,7 +248,7 @@ class Account
 	def self.get_available_cash
 		method_url = "#{configatron.lending_club.base_url}/#{configatron.lending_club.api_version}/accounts/#{configatron.lending_club.account}/availablecash"
 		if $verbose
-			puts "Pulling list of available loans since last release."
+			puts "Pulling available cash amount."
 			puts "method_url: #{__method__} -> #{method_url}"
 		end
 
@@ -258,8 +258,7 @@ class Account
 			 		"Accept" => configatron.lending_club.content_type,		
 			 		"Content-Type" => configatron.lending_club.content_type
 				)
-
-			result = JSON.parse(response)['available_cash']
+			result = JSON.parse(response)['availableCash']
 			PB.add_line("Available Cash:  #{result}")
 		rescue
 			PB.add_line("Failure in: #{__method__}\nUnable to get current account balance.")
