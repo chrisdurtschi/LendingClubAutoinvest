@@ -1,5 +1,5 @@
 require 'clockwork'
-require_relative 'AutoInvestor.rb'
+require_relative 'auto_investor.rb'
 
 module Clockwork
 
@@ -13,8 +13,8 @@ module Clockwork
 end
 
 #LeningClub releases new loas at these times (UTC) each day
-Clockwork.every(1.days, 'AutoInvestor.rb', :at => ['14:00', '18:00', '22:00', '02:00']){
-	
+Clockwork.every(1.days, 'auto_investor.rb', :at => ['14:00', '18:00', '22:00', '02:00']) do
+
 	PB = PushBullet.new
 	A = Account.new
 
@@ -24,4 +24,4 @@ Clockwork.every(1.days, 'AutoInvestor.rb', :at => ['14:00', '18:00', '22:00', '0
 	sleep(5)
 	Loans.new.purchase_loans
 
-}
+end

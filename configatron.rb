@@ -26,9 +26,9 @@ configatron.configure_from_hash(
 	testing_files:
 	{
 		#alternate between the two purchase_response values to alternate test types
-		purchase_response: 'Test/MixedPurchaseResponse.rb',
-		#purchase_response: 'Test/FailedPurchaseResponse.rb',
-		available_loans: 'Test/AvailableLoans.rb',
-		owned_loans:  'Test/OwnedLoans.rb'
+		purchase_response: 'test/mixed_purchase_response.json',
+		#purchase_response: 'test/failed_purchase_response.json',
+		available_loans: 'test/available_loans.json',
+		owned_loans:  'test/owned_loans.json'
 	}
 )
